@@ -25,21 +25,18 @@
 #include <stdint.h>
 #include "model_metadata.h"
 
-const char* ei_classifier_inferencing_categories[] = { "idle", "snake", "updown", "wave" };
+const char* ei_classifier_inferencing_categories[] = { "alarm", "noise" };
 
-uint8_t ei_dsp_config_3_axes[] = { 0, 1, 2 };
-const uint32_t ei_dsp_config_3_axes_size = 3;
-ei_dsp_config_spectral_analysis_t ei_dsp_config_3 = {
+uint8_t ei_dsp_config_62_axes[] = { 0 };
+const uint32_t ei_dsp_config_62_axes_size = 1;
+ei_dsp_config_spectrogram_t ei_dsp_config_62 = {
+    3,
     1,
-    3,
-    1.00000f,
-    "low",
-    3.00000f,
-    6,
+    0.075f,
+    0.075f,
     128,
-    3,
-    0.10000f,
-    "0.1, 0.5, 1.0, 2.0, 5.0"
+    -72,
+    true
 };
 
 #endif // _EI_CLASSIFIER_MODEL_METADATA_H_
