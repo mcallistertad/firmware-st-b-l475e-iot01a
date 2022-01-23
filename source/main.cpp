@@ -49,6 +49,7 @@ EdgeWsClient *ws_client;
 EventQueue main_application_queue;
 EdgeSampler *sampler;
 DigitalOut led(LED1);
+Serial pmod(PD_5, PD_6); //TX, RX
 
 static unsigned char repl_stack[4 * 1024];
 static AtCmdRepl repl(&main_application_queue, sizeof(repl_stack), repl_stack);
@@ -61,8 +62,6 @@ static bool network_connected = false;
 static ei_sensor_t sensor_list[2] = { 0 };
 
 static bool microphone_present;
-
-Serial pmod(PD_5, PD_6); //TX, RX
 
 void print_memory_info() {
     // Grab the heap statistics
@@ -192,8 +191,8 @@ void run_nn(bool debug) {
 void run_nn(bool debug) {
 
     bool alert_trig = false;
-    unsigned int run_cnt = 0;
-    unsigned int alarm_cnt = 0;
+    uint8_t run_cnt = 0;    // only 1 byte available
+    uint16_t alarm_cnt = 0;
 
     if (EI_CLASSIFIER_FREQUENCY != 16000) {
         ei_printf("ERR: Frequency is %d but can only sample at 16000Hz\n", (int)EI_CLASSIFIER_FREQUENCY);
@@ -201,54 +200,54 @@ void run_nn(bool debug) {
     }
 
     // summary of inferencing settings (from model_metadata.h)
-    // printf("Inferencing settings:\n");
-    // printf("\tInterval: %.2f ms.\n", (float)EI_CLASSIFIER_INTERVAL_MS);
-    // printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
-    // printf("\tSample length: %d ms.\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
-    // printf("\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
+    printf("Inferencing settings:\n");
+    printf("\tInterval: %.2f ms.\n", (float)EI_CLASSIFIER_INTERVAL_MS);
+    printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+    printf("\tSample length: %d ms.\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
+    printf("\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
 
-    // printf("Starting inferencing, press 'b' to break\n");
+    printf("Starting inferencing, press 'b' to break\n");
 
     while (1) {
-        // printf("Starting inferencing in %d seconds...\n", INFER_BREAK);
+        printf("Starting inferencing in %d seconds...\n", INFER_BREAK);
 
         // instead of wait_ms, we'll wait on the signal, this allows threads to cancel us...
         if (ei_sleep(INFER_BREAK*1000) != EI_IMPULSE_OK) {
             break;
         }
 
-        // printf("Recording - Run Count[%d]\n", run_cnt+1);
+        printf("Recording - Run Count[%d]\n", run_cnt+1);
 
         bool m = ei_microphone_record(EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16, 20, false);
         if (!m) {
-            // printf("ERR: Failed to record audio...\n");
+            printf("ERR: Failed to record audio...\n");
             break;
         }
 
-        // printf("Recording OK\n");
+        printf("Recording OK\n");
 
         signal_t signal = ei_microphone_get_signal();
         ei_impulse_result_t result = { 0 };
 
         EI_IMPULSE_ERROR r = run_classifier(&signal, &result, debug);
         if (r != EI_IMPULSE_OK) {
-            // printf("ERR: Failed to run classifier (%d)\n", r);
+            printf("ERR: Failed to run classifier (%d)\n", r);
             break;
         }
 
         // print the predictions
-        // printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-        //     result.timing.dsp, result.timing.classification, result.timing.anomaly);
+        printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
+             result.timing.dsp, result.timing.classification, result.timing.anomaly);
 
-        // for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-        //     printf("    %s: %.5f\n", result.classification[ix].label, result.classification[ix].value);
-        // }
+        for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+            printf("    %s: %.5f\n", result.classification[ix].label, result.classification[ix].value);
+        }
 
         // If alarm detected increment counter
-        if (result.classification[0].value >= 0.9) {
+        if (result.classification[0].value >= 0.8) {
             ++alarm_cnt;
 
-            // Send alarm alert
+            // Send alarm alert once
             if (!alert_trig) {
                 pmod.printf("AT+TX 414C41524D\r");
                 alert_trig = true;
@@ -268,7 +267,6 @@ void run_nn(bool debug) {
             alert_trig = false;
             alarm_cnt = 0;
             run_cnt = 0;
-            
         }
     }
 }
@@ -276,20 +274,20 @@ void run_nn(bool debug) {
 void run_nn_continuous(bool debug) {
 
     if (EI_CLASSIFIER_FREQUENCY != 16000) {
-        // ei_printf("ERR: Frequency is %d but can only sample at 16000Hz\n", (int)EI_CLASSIFIER_FREQUENCY);
+        ei_printf("ERR: Frequency is %d but can only sample at 16000Hz\n", (int)EI_CLASSIFIER_FREQUENCY);
         return;
     }
 
     int print_results = -(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW);
 
     // summary of inferencing settings (from model_metadata.h)
-    // printf("Inferencing settings:\n");
-    // printf("\tInterval: %.2f ms.\n", (float)EI_CLASSIFIER_INTERVAL_MS);
-    // printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
-    // printf("\tSample length: %d ms.\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
-    // printf("\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
+    printf("Inferencing settings:\n");
+    printf("\tInterval: %.2f ms.\n", (float)EI_CLASSIFIER_INTERVAL_MS);
+    printf("\tFrame size: %d\n", EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE);
+    printf("\tSample length: %d ms.\n", EI_CLASSIFIER_RAW_SAMPLE_COUNT / 16);
+    printf("\tNo. of classes: %d\n", sizeof(ei_classifier_inferencing_categories) / sizeof(ei_classifier_inferencing_categories[0]));
 
-    // printf("Starting inferencing, press 'b' to break\n");
+    printf("Starting inferencing, press 'b' to break\n");
 
     run_classifier_init();
     ei_microphone_inference_start(EI_CLASSIFIER_SLICE_SIZE);
@@ -298,7 +296,7 @@ void run_nn_continuous(bool debug) {
 
         bool m = ei_microphone_inference_record();
         if (!m) {
-            // printf("ERR: Failed to record audio...\n");
+            printf("ERR: Failed to record audio...\n");
             break;
         }
 
@@ -309,19 +307,19 @@ void run_nn_continuous(bool debug) {
 
         EI_IMPULSE_ERROR r = run_classifier_continuous(&signal, &result, debug);
         if (r != EI_IMPULSE_OK) {
-            // printf("ERR: Failed to run classifier (%d)\n", r);
+            printf("ERR: Failed to run classifier (%d)\n", r);
             break;
         }
 
         if(++print_results >= (EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW >> 1)) {
             // print the predictions
-            // printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
-            //     result.timing.dsp, result.timing.classification, result.timing.anomaly);
-            // for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-            //     printf("    %s: %.5f\n", result.classification[ix].label, result.classification[ix].value);
-            // }
+            printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
+                result.timing.dsp, result.timing.classification, result.timing.anomaly);
+            for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+                printf("    %s: %.5f\n", result.classification[ix].label, result.classification[ix].value);
+            }
             // #if EI_CLASSIFIER_HAS_ANOMALY == 1
-            // printf("    anomaly score: %.3f\n", result.anomaly);
+            printf("    anomaly score: %.3f\n", result.anomaly);
             // #endif
 
             print_results = 0;
@@ -454,13 +452,13 @@ void fill_memory() {
 int main() {
     // mbed_mem_trace_set_callback(mbed_mem_trace_default_callback);
 
-    // printf("\n\nSafecility SafeSound PoC\n");
-    // printf("Compiled on %s at %s\n", __DATE__, __TIME__);
+    printf("\n\nSafecility SafeSound PoC\n");
+    printf("Compiled on %s at %s\n", __DATE__, __TIME__);
 
     pmod.baud(115200);
 
     int err = fs.mount(&fs_bd);
-    // printf("Mounting file system: %s\n", (err ? "Fail :(" : "OK"));
+    printf("Mounting file system: %s\n", (err ? "Fail :(" : "OK"));
 
     if (err) {
         // Reformat if we can't mount the filesystem
@@ -504,12 +502,12 @@ int main() {
 
     EI_CONFIG_ERROR cr = ei_config_init(&config_ctx);
 
-    // if (cr != EI_CONFIG_OK) {
-    //     printf("Failed to initialize configuration (%d)\n", cr);
-    // }
-    // else {
-    //     printf("Loaded configuration\n");
-    // }
+    if (cr != EI_CONFIG_OK) {
+        printf("Failed to initialize configuration (%d)\n", cr);
+    }
+    else {
+        printf("Loaded configuration\n");
+    }
 
     ws_client = new EdgeWsClient(
         &main_application_queue,
@@ -533,7 +531,6 @@ int main() {
     //     connect_to_wifi();
     // }
 
-    // printf("Type AT+HELP to see a list of commands.\n");
     // print_memory_info();
     // repl.start_repl();
 
